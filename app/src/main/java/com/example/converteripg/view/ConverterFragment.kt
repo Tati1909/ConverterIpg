@@ -1,19 +1,17 @@
 package com.example.converteripg.view
 
+import android.app.Activity
 import android.content.Intent
 import android.content.Intent.ACTION_GET_CONTENT
-import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
-import android.provider.MediaStore
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
-import com.example.converteripg.App
 import com.example.converteripg.R
-import com.example.converteripg.data.converter.ConverterFactory
+import com.example.converteripg.data.converter.ConverterJpgToPng
 import com.example.converteripg.databinding.ViewConverterBinding
 import com.example.converteripg.presentation.converter.ConverterPresenter
 import com.example.converteripg.scheduler.SchedulersFactory
@@ -28,13 +26,15 @@ class ConverterFragment : MvpAppCompatFragment(), ConverterView {
 
     private val presenter by moxyPresenter {
         ConverterPresenter(
-            converter = ConverterFactory.create(requireContext()),
+            converter = ConverterJpgToPng(requireContext()),
             schedulers = SchedulersFactory.create()
         )
     }
 
     private var _binding: ViewConverterBinding? = null
     private val binding get() = _binding!!
+
+    private var imageUri: Uri? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -49,55 +49,116 @@ class ConverterFragment : MvpAppCompatFragment(), ConverterView {
         super.onViewCreated(view, savedInstanceState)
 
         requireActivity().title = getString(R.string.converter_tittle)
-
-        binding.button.setOnClickListener { pickImage() }
     }
 
-    //выбираем картинку из галереи
-    private fun pickImage() {
-        /**
-         * ACTION_GET_CONTENT
-        Разрешить пользователю выбрать определенный тип данных и вернуть их.
-        Обычно вы указываете широкий тип MIME (например, image/ *),
-        в результате чего пользователь может выбирать из широкого диапазона
-        только картинки.*/
-        val intent = Intent(ACTION_GET_CONTENT)
-        intent.type = "image/*"
-
-        startActivityForResult(intent, 1)
-    }
-
-     //начинаем конвертацию
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
 
-        data?.data?.let(presenter::convert)
-            ?: Toast.makeText(requireContext(), "Изображение не выбрано", Toast.LENGTH_SHORT).show()
+        if (resultCode == Activity.RESULT_OK && requestCode == 1) {
+            imageUri = data?.data
+            imageUri?.let { presenter.originalImageSelected(it) }
+        }
     }
 
-    override fun showContent(uri: Uri?) {
+    override fun init() {
+
+        hideProgressBar()
+        hideErrorBar()
+        btnStartConvertDisabled()
+        btnAbortConvertDisabled()
+        signGetStartedShow()
+        //signAbortConvertHide()
+        signWaitingShow()
 
         /**
-         * Любое изображение, которое мы загружаем из графического файла,
-         * является набором цветных точек (пикселей). А информацию о каждой точке можно сохранить в битах.
-         * Отсюда и название - карта битов или по-буржуйски - bitmap.
+         * Выбрать изображение
          */
-        val bitmap: Bitmap? =
-            uri?.let { MediaStore.Images.Media.getBitmap(requireContext().contentResolver, uri) }
+        binding.btnImageSelection.setOnClickListener {
+            /**
+             * ACTION_GET_CONTENT
+            Разрешить пользователю выбрать определенный тип данных и вернуть их.
+            Обычно вы указываете широкий тип MIME (например, image/ *),
+            в результате чего пользователь может выбирать из широкого диапазона
+            только картинки.*/
+            val intent = Intent(ACTION_GET_CONTENT)
+            intent.type = "image/*"
 
-        binding.progressBar.visibility = View.VISIBLE
-        binding.image.setImageBitmap(bitmap)
+            startActivityForResult(intent, 1)
+        }
+        /**
+         * Начать конвертацию
+         */
+        binding.btnStartConverting.setOnClickListener {
+            imageUri?.let(presenter::startConvertingPressed)
+        }
+        /**
+         * Отменить конвертацию
+         */
+        binding.btnAbort.setOnClickListener {
+            presenter.abortConvertImagePressed()
+        }
     }
 
-    override fun showLoading() {
+    override fun showProgressBar() {
+        binding.progressBar2.visibility = View.VISIBLE
+    }
 
-        binding.progressBar.visibility = View.VISIBLE
+    override fun hideProgressBar() {
+        binding.progressBar2.visibility = View.GONE
+    }
 
-        //если хотим отменить загрузку
-        binding.button.setOnClickListener {
-            presenter.cancel()
-        }
-        binding.button.text = getString(R.string.cancel)
+    override fun showOriginImage(uri: Uri) {
+        binding.imgViewOriginalImg.setImageURI(uri)
+    }
+
+    override fun showConvertedImage(uri: Uri) {
+        binding.imgViewConvertedImg.setImageURI(uri)
+    }
+
+    override fun btnStartConvertEnable() {
+        binding.btnStartConverting.isEnabled = true
+    }
+
+    override fun btnStartConvertDisabled() {
+        binding.btnStartConverting.isEnabled = false
+    }
+
+    override fun btnAbortConvertEnabled() {
+        binding.btnAbort.isEnabled = true
+    }
+
+    override fun btnAbortConvertDisabled() {
+        binding.btnAbort.isEnabled = false
+    }
+
+    override fun signAbortConvertShow() {
+        binding.imgViewConvertedImg.setImageURI(null)
+        binding.imgViewCancelSign.visibility = View.VISIBLE
+    }
+
+    override fun signAbortConvertHide() {
+        binding.imgViewCancelSign.visibility = View.GONE
+    }
+
+    override fun signGetStartedShow() {
+        binding.imgViewGetStartedSign.visibility = View.VISIBLE
+    }
+
+    override fun signGetStartedHide() {
+        binding.imgViewGetStartedSign.visibility = View.GONE
+    }
+
+    override fun signWaitingShow() {
+        binding.imgViewConvertedImg.setImageURI(null)
+        binding.imgViewWaitingSign.visibility = View.VISIBLE
+    }
+
+    override fun signWaitingHide() {
+        binding.imgViewWaitingSign.visibility = View.GONE
+    }
+
+    override fun hideErrorBar() {
+        binding.imgViewErrorSign.visibility = View.GONE
     }
 
     override fun showError(error: Throwable) {
